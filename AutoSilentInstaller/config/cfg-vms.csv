@@ -1,0 +1,3 @@
+Time,UserName,Password,ComputerName,InstallerType,InstallerFolder,ServerName,ServerDB,ServerUser,ServerPassword,LicenseFile
+02:30,g11nqe.vmware.com\viewadmin,a,Agent10CN2.g11nqe.vmware.com,"Agent,Client",..\build\,CS2k8JP.g11nqe.vmware.com,,,,
+03:30,g11nqe.vmware.com\viewadmin,a,RDSH2k8JP.g11nqe.vmware.com,RDSH,..\build\,CS2k8JP.g11nqe.vmware.com,,,,
