@@ -1,0 +1,5 @@
+Time,ComputerName,InstallerType,DependOnHostAndPort
+03:00,RDSH2K12CN.g11nqe.vmware.com,RDSH,zzhuocs.g11nqe.vmware.com:443
+02:30,Agent10FR2.g11nqe.vmware.com,Agent,
+02:00,zzhuocs.g11nqe.vmware.com,CS,
+
