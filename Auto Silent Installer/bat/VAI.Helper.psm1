@@ -197,7 +197,7 @@ Function Wait-ServerConnection {
 	if ($dependonPort -eq $null) {$dependonPort = '443'}			
 
 	if ($timeretry -eq '') {$timeretry = 60}
-
+	
 	while ((-Not $isconnected) -And ($timeused -lt $timeout)) { 
 	$varRunning = Test-NetConnection -ComputerName $dependonHost -Port $dependonPort
 	$isconnected = $varRunning.TcpTestSucceeded
@@ -206,11 +206,13 @@ Function Wait-ServerConnection {
 		$timeused += $timeretry
 	} else {
 		# Need to use Write-Output since invoked by Workflow
-		Write-Output ("Connected to {0} at port {1} in {2}s" -f $dependonHost,$dependonPort,$timeused)
+		$today = Set-TimeNow
+		Write-Output ("{0} [Info]: Connected to {1} at port {2} in {3}s" -f $today,$dependonHost,$dependonPort,$timeused)
 	}
 	if (-not ($timeused -lt $timeout)){
 		# Need to use Write-Output since invoked by Workflow
-		Write-Output ("Failed to Connect to {0} at port {1} in {2}s" -f $dependonHost,$dependonPort,$timeout)
+		$today = Set-TimeNow
+		Write-Output ("{0} [Error]: Failed to Connect to {1} at port {2} in {3}s" -f $today,$dependonHost,$dependonPort,$timeout)
 	}
 	
 	}
@@ -608,7 +610,7 @@ Function Set-VAITaskFunc ($mydomain, $executenow, $varComputer, $scriptPath) {
 	Import-Module .\VAI.Helper.psm1
 	# Log Output
 	$MyLogFolder = Join-Path $mydomain.LogFolder $mydomain.Domain
-	$MyInstallResults = Join-Path $MyLogFolder "InstallResult.csv"
+	$MyInstallResults = Join-Path $MyLogFolder "InstallResults.csv"
 	
 	$MyUserwithDomain = $mydomain.Domain + "\" + $mydomain.Username
 	$varTaskXMLPath = $mydomain.TaskXMLTemplate 
@@ -635,8 +637,15 @@ Function Set-VAITaskFunc ($mydomain, $executenow, $varComputer, $scriptPath) {
 	}
 	
 	#$varSchtasks = $env:SystemRoot + "\system32\schtasks.exe"
-	$varCMD = "/s {0} /u {1} /p {2}" -f  $varComputer.ComputerName,$MyUserwithDomain,$mydomain.Password
-
+	$vmName = hostname
+	$vmFullName = $vmName + "." + $mydomain.Domain
+	$ips = Get-WmiObject win32_networkadapterconfiguration | where{($_.Ipaddress.length -gt 0) -and ($_.DefaultIPGateway.length -gt 0)} 
+	$vmip = $ips.Ipaddress[0]
+	if (($vmip -eq $varComputer.ComputerName) -or ($vmFullName -eq $varComputer.ComputerName)){
+		$varCMD = ""
+	} else {
+		$varCMD = "/s {0} /u {1} /p {2}" -f  $varComputer.ComputerName,$MyUserwithDomain,$mydomain.Password
+	}
 	$varCMDCreateHorizonInstall = "schtasks.exe /create {0} /tn HorizonInstall /xml {1}\HorizonInstall.xml /ru {2} /rp {3} /F >> {4}" -f $varCMD,$varTaskXMLPath,$MyUserwithDomain,$mydomain.Password, $varLogs
 	$varCMDCreateHorizonReboot = "schtasks.exe /create {0} /tn HorizonReboot /xml {1}\HorizonReboot.xml /ru {2} /rp {3} /F >> {4}" -f $varCMD,$varTaskXMLPath,$MyUserwithDomain,$mydomain.Password, $varLogs 
 	$varCMDChangeHorizonReboot = "schtasks.exe /change {0} /tn HorizonReboot /st  {1} /ru {2} /rp {3} >> {4}" -f $varCMD,$varComputer.Time,$MyUserwithDomain,$mydomain.Password, $varLogs
@@ -700,12 +709,11 @@ Function Set-VAITaskFunc ($mydomain, $executenow, $varComputer, $scriptPath) {
 
 	# Execute $varBat 
 	# Need to use Write-Output since invoked by Workflow
-	Write-Output ("Execute {0} which log file is {1}!" -f $varBat,$varLogs)
+	Write-Output ("{0} [Info]: Execute {1} which log file is {2}!" -f $today,$varBat,$varLogs)
 	& $varBat
 	
 	# Let's monitor the progress if Yes or Force
-	switch ($executenow) {
-		{"force" -or "yes"} {
+	if (($executenow -eq "force") -or ($executenow -eq "yes")) {
 			Write-Output ("{0} [Info]: Set Execution Status of {1} to monitor file {2}!" -f $today,$varComputer.ComputerName,$MyInstallResults)
 			$ReportHeader = "ComputerName,TaskStatus,StartedAt,CompletedAt,TimeUsed"
 			$varCMD = "/s {0} /u {1} /p {2}" -f  $varComputer.ComputerName,$MyUserwithDomain,$mydomain.Password
@@ -717,25 +725,27 @@ Function Set-VAITaskFunc ($mydomain, $executenow, $varComputer, $scriptPath) {
 				Add-Content $MyInstallResults $ReportHeader
 			}
 			Add-Content $MyInstallResults $ReportEntry
-		}
 	}
 
 }
 # Module: to get Task status of HorizonInstall
 Function Get-TaskStatus {
 param(
-    [Parameter(Mandatory = $true)] $ComputerName,
-	[Parameter(Mandatory = $true)] $UserName,
-	[Parameter(Mandatory = $true)] $Password,
+    [Parameter(Mandatory = $false)] $ComputerName,
+	[Parameter(Mandatory = $false)] $UserName,
+	[Parameter(Mandatory = $false)] $Password,
 	[Parameter(Mandatory = $false)] $TaskName
   )
- 	if ((($ComputerName -eq $null) -or ( $ComputerName -eq "" )) -or (($UserName -eq $null) -or ( $UserName -eq "" )) -or (($Password -eq $null) -or ( $Password -eq "" ))) {
-		Write-Output  " No ComputerName set, cancel the task!"
-		return
-	} 
+  
    	if (($TaskName -eq $null) -or ( $TaskName -eq "" )) { $TaskName= "HorizonInstall"}
-	# By Default, WinRM is not enabled by Windows 7/10, use schtasks /s instead
-	$varCMD = "schtasks /s {0} /u {1} /p {2} /query /tn {3} | findstr {3}" -f  $ComputerName,$UserName,$Password,$TaskName
+	# By Default, WinRM is not enabled by Windows 7/10, use schtasks instead
+ 	if (($ComputerName -eq $null) -or ( $ComputerName -eq "" )) {
+		# Query task on local host
+		$varCMD = "schtasks /query /tn {1} | findstr {1}" -f  $ComputerName,$UserName,$Password,$TaskName
+	} else {
+		# Query task on remote host
+		$varCMD = "schtasks /s {0} /u {1} /p {2} /query /tn {3} | findstr {3}" -f  $ComputerName,$UserName,$Password,$TaskName
+	}
 	$myscptTaskStatus = [scriptblock]::Create($varCMD)	
 	$mystatus = Invoke-Command -ScriptBlock $myscptTaskStatus
 	$mystatus=$mystatus.trimend().split(" ")[-1]
